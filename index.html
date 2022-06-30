@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Socket.IO chat</title>
+    <style>
+      body { margin: 0; padding-bottom: 3rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+      #form { background: rgba(0, 0, 0, 0.15); padding: 0.25rem; position: fixed; bottom: 0; left: 0; right: 0; display: flex; height: 3rem; box-sizing: border-box; backdrop-filter: blur(10px); }
+      #input { border: none; padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin: 0.25rem; }
+      #input:focus { outline: none; }
+      #form > button { background: #333; border: none; padding: 0 1rem; margin: 0.25rem; border-radius: 3px; outline: none; color: #fff; }
+
+      #messages { list-style-type: none; margin: 0; padding: 0; }
+      #messages > li { padding: 0.5rem 1rem; }
+      #messages > li:nth-child(odd) { background: #efefef; }
+    </style>
+  </head>
+  <body>
+    <ul id="messages"></ul>
+    <form id="form" action="">
+      <input id="input" autocomplete="off" /><button>Send</button>
+    </form>
+    <script src="/socket.io/socket.io.js"></script>
+<script>
+  var socket = io();
+  var form = document.getElementById('form');
+  var input = document.getElementById('input');
+  var audio = document.getElementById("audio");
+
+  //переменные для приема сигнала
+  let arrayOfBlobs = []; //аудиобуфер
+  mediaSource = new MediaSource(); // объект MediaSource
+  audioToUrl = URL.createObjectURL(mediaSource);// создаем объект URL для связывания видеопотока с проигрывателем
+
+  navigator.mediaDevices.getUserMedia({
+    audio: true
+  }).then(function(stream) {
+      var mediarecorder = new MediaRecorder(stream, {mimeType: "audio/webm; codecs=\"opus\""});
+      mediarecorder.ondataavailable = function(e) {
+        if (stream) {
+          socket.emit('chat_audio', e.data);
+        }
+      };
+      mediarecorder.start(1000);
+  }).catch(function (err) { console.log(err); });
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    if (input.value) {
+      socket.emit('chat_message', input.value);
+      input.value = '';
+    }
+  });
+
+  socket.on('chat_message', function(msg) {
+    var item = document.createElement('li');
+    item.textContent = msg;
+    messages.appendChild(item);
+    window.scrollTo(0, document.body.scrollHeight);
+  });
+  socket.on('chat_audio', function(msg) {
+    console.log(msg);
+    // "кладем" полученный кусочек в массив 
+    arrayOfBlobs.push(new Blob([msg], { type: "audio/wav" }));
+     // здесь будем читать кусочки
+     readChunk();
+  });
+
+mediaSource.addEventListener('sourceopen', function() {
+    var mediaSource = this;
+    sourceBuffer = mediaSource.addSourceBuffer("audio/webm; codecs=\"opus\"");
+});
+function readChunk(){
+  var reader = new FileReader();
+  reader.onload = function(e) { 
+    // как только FileReader будет готов, и загрузит себе кусочек видеопотока
+    // мы "прицепляем" перекодированный в Uint8Array (был Blob) кусочек в буфер, связанный
+    // с проигрывателем, и проигрыватель начинает воспроизводить полученный кусочек видео/аудио
+    sourceBuffer.appendBuffer(new Uint8Array(e.target.result));
+
+    reader.onload = null;
+  }
+  reader.readAsArrayBuffer(arrayOfBlobs.shift());
+}
+
+
+</script>
+  </body>
+
+</html>
